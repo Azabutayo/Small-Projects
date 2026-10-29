@@ -373,7 +373,7 @@ setTuning('standard');
 const FFT_SIZE = 4096;        // jendela ~85 ms pada 48 kHz, cukup untuk D2 (~14 ms/periode)
 const LOWPASS_HZ = 1000;
 const YIN_THRESHOLD = 0.12;   // makin kecil = makin ketat
-const MIN_RMS = 0.01;         // abaikan sinyal terlalu pelan
+const MIN_RMS = 0.004;        // abaikan sinyal terlalu pelan (mic laptop tanpa AGC sering pelan)
 const MIN_F = 60, MAX_F = 400; // rentang pencarian f0 (mencakup D2 sampai E4 di semua tuning)
 const IN_TUNE_CENTS = 5;
 const FAR_CENTS = 25;         // di luar ini dianggap meleset jauh (merah)
@@ -569,6 +569,7 @@ async function start() {
     return;
   }
   ctx = new (window.AudioContext || window.webkitAudioContext)();
+  await ctx.resume();   // beberapa browser membuat context dalam keadaan suspended
   const source = ctx.createMediaStreamSource(stream);
 
   const lowpass = ctx.createBiquadFilter();
@@ -622,6 +623,7 @@ function loop() {
     }
   } else {
     if (history.length) { history.length = 0; render(0); }
+    $('freq').textContent = `Level mic ${(rms * 100).toFixed(2)} (min ${(MIN_RMS * 100).toFixed(2)}), petik lebih keras / dekatkan`;
   }
   rafId = requestAnimationFrame(loop);
 }
