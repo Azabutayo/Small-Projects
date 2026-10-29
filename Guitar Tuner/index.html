@@ -712,6 +712,7 @@ try {
   if (savedRef) { $('ref').value = savedRef; applyReference(savedRef); }
   savedMode = localStorage.getItem('tunerMode') || 'standard';
 } catch (e) {}
+$('toggle').addEventListener('click', () => running ? stop() : start());
 applyTuning(savedMode);
 setIdleUI();
 </script>
