@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guitar Tuner</title>
+<style>
+  :root {
+    --fg:#eef1f7;
+    --mute:#8d94a3;
+    --ok:#3ddc84;
+    --warn:#ffab4d;
+    --bad:#ff6161;
+    --accent:#7c8cff;
+    --accent-soft:rgba(124,140,255,.14);
+    --chip:rgba(255,255,255,.05);
+    --card:rgba(17,19,26,.72);
+    --line:rgba(255,255,255,.09);
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body {
+    margin:0; min-height:100vh; display:grid; place-items:center;
+    padding:24px 16px;
+    color:var(--fg);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:
+      radial-gradient(900px 520px at 12% -12%, rgba(124,140,255,.20), transparent 62%),
+      radial-gradient(820px 520px at 112% 112%, rgba(61,220,132,.13), transparent 58%),
+      #06070b;
+    background-attachment:fixed;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- Kartu kaca ---------- */
+  .stack { display:grid; gap:16px; width:min(430px,100%); }
+  .tuner, .metro {
+    width:100%;
+    background:var(--card);
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
+    border:1px solid var(--line);
+    border-radius:28px;
+    padding:20px clamp(16px,4.5vw,28px) 26px;
+    text-align:center;
+    box-shadow:0 30px 80px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+    transition:border-color .3s ease, box-shadow .3s ease;
+  }
+  .tuner[data-state="in"] {
+    --accent:var(--ok);
+    --accent-soft:rgba(61,220,132,.15);
+    border-color:rgba(61,220,132,.38);
+    box-shadow:0 30px 80px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06),
+               0 0 46px rgba(61,220,132,.20);
+  }
+  .tuner[data-state="flat"], .tuner[data-state="sharp"] {
+    --accent:var(--warn);
+    --accent-soft:rgba(255,171,77,.14);
+    border-color:rgba(255,171,77,.32);
+  }
+  .tuner[data-state="flat"][data-far="true"],
+  .tuner[data-state="sharp"][data-far="true"] {
+    --accent:var(--bad);
+    --accent-soft:rgba(255,97,97,.14);
+    border-color:rgba(255,97,97,.32);
+  }
+
+  /* ---------- Header ---------- */
+  .top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .brand { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--mute); }
+  .brand svg { width:15px; height:15px; }
+  .live {
+    display:flex; align-items:center; gap:7px;
+    font-size:10px; font-weight:700; letter-spacing:.14em;
+    color:var(--mute);
+    background:var(--chip); border:1px solid var(--line);
+    padding:5px 11px; border-radius:999px;
+    transition:color .2s, background .2s, border-color .2s;
+  }
+  .live .dot { width:7px; height:7px; border-radius:50%; background:#5a6270; transition:background .2s; }
+  .tuner[data-running="true"] .live { color:var(--accent); background:var(--accent-soft); border-color:var(--accent); }
+  .tuner[data-running="true"] .live .dot { background:var(--accent); animation:pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse {
+    0%,100% { box-shadow:0 0 0 0 rgba(255,255,255,.22); }
+    50%     { box-shadow:0 0 0 5px rgba(255,255,255,0); }
+  }
+
+  /* ---------- Pemilih tuning ---------- */
+  .tuning-row { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:10px; margin-top:16px; }
+  .tuning-row select {
+    padding:8px 14px; font-size:14px; font-weight:600; font-family:inherit;
+    border-radius:999px; border:1px solid var(--line);
+    background:rgba(0,0,0,.35); color:var(--fg);
+    outline:none; cursor:pointer; transition:border-color .2s;
+  }
+  .tuning-row select:focus { border-color:var(--accent); }
+  .tuning-row select option { background:#11131a; color:#eef1f7; }
+  .tuning-names {
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:13px; font-weight:700; letter-spacing:.1em; color:var(--mute);
+  }
+
+  /* ---------- Nota & status ---------- */
+  .readout { margin-top:14px; }
+  .note-row { display:flex; align-items:center; justify-content:center; gap:12px; }
+  .note {
+    font-size:clamp(62px,17vw,84px); font-weight:800; line-height:1;
+    letter-spacing:-.03em; color:var(--fg);
+    font-variant-numeric:tabular-nums;
+    transition:color .2s ease, text-shadow .25s ease;
+  }
+  .tuner[data-state="in"] .note { color:var(--ok); text-shadow:0 0 30px rgba(61,220,132,.5); }
+  .tuner[data-state="flat"] .note,
+  .tuner[data-state="sharp"] .note { color:var(--warn); text-shadow:0 0 24px rgba(255,171,77,.3); }
+  .tuner[data-state="flat"][data-far="true"] .note,
+  .tuner[data-state="sharp"][data-far="true"] .note { color:var(--bad); text-shadow:0 0 24px rgba(255,97,97,.3); }
+
+  .lock {
+    display:none; align-items:center; gap:5px;
+    font-size:11px; font-weight:700; letter-spacing:.08em;
+    padding:5px 10px; border-radius:999px;
+    background:var(--accent-soft); color:var(--accent);
+    border:1px solid var(--accent);
+    transform:translateY(-6px);
+  }
+  .lock.show { display:inline-flex; }
+  .lock svg { width:11px; height:11px; }
+
+  .status {
+    margin-top:10px; font-size:clamp(15px,4vw,17px); font-weight:600;
+    color:var(--mute); min-height:1.4em;
+    transition:color .2s ease;
+  }
+  .tuner[data-state="in"] .status { color:var(--ok); }
+  .tuner[data-state="flat"] .status,
+  .tuner[data-state="sharp"] .status { color:var(--warn); }
+  .tuner[data-state="flat"][data-far="true"] .status,
+  .tuner[data-state="sharp"][data-far="true"] .status { color:var(--bad); }
+
+  /* ---------- Meter busur ---------- */
+  .meter { position:relative; margin:6px auto 0; width:100%; max-width:340px; }
+  .meter svg { display:block; width:100%; height:auto; overflow:visible; }
+  .meter .zone { fill:none; stroke-width:5; stroke-linecap:round; opacity:.9; }
+  .meter .tick { stroke:rgba(255,255,255,.16); stroke-width:1; stroke-linecap:round; }
+  .meter .tick.major { stroke:rgba(255,255,255,.38); stroke-width:1.6; }
+  .meter .tick.center { stroke:var(--accent); stroke-width:2.5; transition:stroke .2s ease; }
+  .meter .scale-label { fill:var(--mute); font-size:11px; font-weight:600; font-family:inherit; }
+  #needleGroup {
+    transform-box:view-box; transform-origin:150px 150px;
+    transform:rotate(0deg);
+    transition:transform .14s cubic-bezier(.22,1,.36,1);
+  }
+  #needleLine { stroke:var(--accent); stroke-width:3.5; stroke-linecap:round; transition:stroke .2s ease; }
+  #needleHub { fill:#0b0d14; stroke:var(--accent); stroke-width:3; transition:stroke .2s ease; }
+  .tuner[data-state="in"] #needleGroup { filter:drop-shadow(0 0 7px rgba(61,220,132,.9)); }
+  .tuner[data-state="flat"] #needleGroup,
+  .tuner[data-state="sharp"] #needleGroup { filter:drop-shadow(0 0 6px rgba(255,171,77,.75)); }
+  .tuner[data-state="flat"][data-far="true"] #needleGroup,
+  .tuner[data-state="sharp"][data-far="true"] #needleGroup { filter:drop-shadow(0 0 6px rgba(255,97,97,.75)); }
+
+  /* ---------- Angka cents & frekuensi ---------- */
+  .cents {
+    margin-top:-4px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:22px; font-weight:700; letter-spacing:-.02em;
+    color:var(--accent); min-height:1.3em; transition:color .2s ease;
+  }
+  .freq {
+    color:var(--mute); font-size:13px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    min-height:1.4em; margin-top:3px;
+  }
+
+  /* ---------- Pilihan senar ---------- */
+  .strings { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-top:20px; }
+  .strings span {
+    padding:9px 0; border-radius:999px;
+    background:var(--chip); border:1px solid var(--line);
+    color:var(--mute); font-size:13px; font-weight:700;
+    cursor:pointer; user-select:none;
+    transition:all .18s ease;
+  }
+  .strings span:hover { color:var(--fg); border-color:rgba(255,255,255,.22); }
+  .strings span.locked { border-color:var(--accent); color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+  .strings span.active { background:var(--accent); border-color:var(--accent); color:#0b0d14; transform:translateY(-2px); }
+  .strings-hint { margin-top:8px; font-size:11.5px; color:var(--mute); letter-spacing:.01em; }
+
+  /* ---------- Referensi A4 ---------- */
+  .ref {
+    display:flex; align-items:center; justify-content:center; flex-wrap:wrap;
+    gap:8px; color:var(--mute); font-size:14px; margin-top:18px;
+  }
+  .ref input {
+    width:88px; padding:8px 8px; font-size:15px; text-align:center;
+    border-radius:999px; border:1px solid var(--line);
+    background:rgba(0,0,0,.35); color:var(--fg);
+    font-variant-numeric:tabular-nums;
+    outline:none; transition:border-color .2s;
+  }
+  .ref input:focus { border-color:var(--accent); }
+  .ref .reset {
+    padding:8px 14px; font-size:12px; font-weight:700;
+    background:var(--chip); color:var(--fg);
+    border:1px solid var(--line); border-radius:999px;
+    cursor:pointer; transition:background .15s;
+  }
+  .ref .reset:hover { background:rgba(255,255,255,.1); }
+
+  /* ---------- Tombol utama ---------- */
+  button#toggle, button#mToggle {
+    width:100%; margin-top:20px;
+    display:inline-flex; align-items:center; justify-content:center; gap:10px;
+    padding:16px 18px; font-size:16px; font-weight:700; letter-spacing:.01em;
+    border:0; border-radius:999px; cursor:pointer;
+    background:linear-gradient(180deg,#49e894,#2fbd6f);
+    color:#06210f;
+    box-shadow:0 12px 30px rgba(61,220,132,.25), inset 0 1px 0 rgba(255,255,255,.35);
+    transition:transform .12s ease, box-shadow .2s ease;
+  }
+  button#toggle:hover { transform:translateY(-1px); }
+  button#toggle:active { transform:translateY(1px); }
+  button#toggle svg { width:18px; height:18px; }
+  button#toggle.stop, button#mToggle.stop {
+    background:linear-gradient(180deg,#ff6e6e,#e14b4b);
+    color:#fff;
+    box-shadow:0 12px 30px rgba(255,97,97,.25), inset 0 1px 0 rgba(255,255,255,.3);
+  }
+  #msg { color:var(--bad); font-size:13px; margin-top:12px; min-height:1.2em; line-height:1.45; }
+
+  /* ---------- Metronom ---------- */
+  .metro { padding-top:18px; --down:#ff5fa2; }
+  .metro .brand { justify-content:center; }
+  .leds { display:flex; justify-content:center; gap:12px; margin:18px 0 4px; min-height:24px; }
+  .led { width:22px; height:22px; border-radius:50%; background:rgba(255,255,255,.07); border:1px solid var(--line); transition:background .05s, box-shadow .05s; }
+  .led.first { border-color:var(--down); }
+  .led.on { background:var(--accent); box-shadow:0 0 14px var(--accent); }
+  .led.first.on { background:var(--down); box-shadow:0 0 16px var(--down); }
+  .bpm-row, .sig-row { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:14px; color:var(--mute); font-size:14px; }
+  .bpm-row input[type=range] { flex:1; accent-color:var(--accent); }
+  .metro input[type=number], .metro select {
+    padding:8px 10px; font-size:15px; font-family:inherit; text-align:center;
+    border-radius:999px; border:1px solid var(--line);
+    background:rgba(0,0,0,.35); color:var(--fg); outline:none;
+  }
+  .metro input[type=number] { width:74px; }
+  .metro select option { background:#11131a; color:#eef1f7; }
+  @media (max-width:400px) {
+    .strings span { font-size:12px; padding:8px 0; }
+    .tuner { border-radius:22px; }
+  }
+  @media (prefers-reduced-motion:reduce) {
+    #needleGroup, .tuner, .note, .status { transition:none; }
+    .tuner[data-running="true"] .live .dot { animation:none; }
+  }
+</style>
+</head>
+<body>
+<main class="stack">
+<div class="tuner" id="card" data-state="idle" data-running="false">
+  <div class="top">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+      Guitar Tuner
+    </div>
+    <div class="live" id="live"><span class="dot"></span><span id="liveText">SIAP</span></div>
+  </div>
+
+  <div class="tuning-row">
+    <select id="tuning" aria-label="Mode tuning"></select>
+    <span class="tuning-names" id="tuningNames"></span>
+  </div>
+
+  <div class="readout">
+    <div class="note-row">
+      <div class="note" id="note">–</div>
+      <span class="lock" id="lockBadge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span id="lockName"></span>
+      </span>
+    </div>
+    <div class="status" id="hint">Petuk satu senar untuk mulai</div>
+  </div>
+
+  <div class="meter">
+    <svg viewBox="0 0 300 172" role="img" aria-label="Meter cents">
+      <defs>
+        <linearGradient id="zoneGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"   stop-color="#ff6161"/>
+          <stop offset="22%"  stop-color="#ffab4d"/>
+          <stop offset="42%"  stop-color="#ffe08a"/>
+          <stop offset="50%"  stop-color="#3ddc84"/>
+          <stop offset="58%"  stop-color="#ffe08a"/>
+          <stop offset="78%"  stop-color="#ffab4d"/>
+          <stop offset="100%" stop-color="#ff6161"/>
+        </linearGradient>
+      </defs>
+      <path class="zone" d="M 20 150 A 130 130 0 0 1 280 150" stroke="url(#zoneGrad)"/>
+      <g id="ticks"></g>
+      <text class="scale-label" x="24" y="168" text-anchor="middle">-50</text>
+      <text class="scale-label" x="150" y="12" text-anchor="middle">0</text>
+      <text class="scale-label" x="276" y="168" text-anchor="middle">+50</text>
+      <g id="needleGroup">
+        <line id="needleLine" x1="150" y1="150" x2="150" y2="42"/>
+        <circle id="needleHub" cx="150" cy="150" r="6"/>
+      </g>
+    </svg>
+  </div>
+
+  <div class="cents" id="cents">&nbsp;</div>
+  <div class="freq" id="freq">0.00 Hz</div>
+
+  <div class="strings" id="strings"></div>
+  <div class="strings-hint">Klik senar untuk mengunci target (klik lagi untuk lepas)</div>
+
+  <div class="ref">
+    <label for="ref">A4 =</label>
+    <input id="ref" type="number" min="400" max="480" step="0.5" value="440">
+    <span>Hz</span>
+    <button class="reset" id="resetRef" type="button">440</button>
+  </div>
+
+  <button id="toggle" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+    <span id="toggleText">Mulai Tuner</span>
+  </button>
+  <div id="msg"></div>
+</div>
+
+<section class="metro">
+  <div class="brand">Metronom</div>
+  <div class="leds" id="leds"></div>
+  <div class="bpm-row">
+    <input type="range" id="bpm" min="40" max="240" value="100" aria-label="BPM">
+    <input type="number" id="bpmNum" min="40" max="240" value="100" aria-label="BPM">
+    <span>BPM</span>
+  </div>
+  <div class="sig-row">
+    <label for="sig">Birama</label>
+    <select id="sig"></select>
+  </div>
+  <button id="mToggle" type="button">Start</button>
+</section>
+</main>
+
+<script>
+// ---------- Konfigurasi tuning ----------
+// Setiap tuning hanya berisi nama nada. Frekuensi dihitung dari A4 (master tune)
+// memakai equal temperament: f = A4 * 2^((midi - 69) / 12).
+const TUNINGS = {
+  standard: { label: 'Standard',                     notes: ['E2','A2','D3','G3','B3','E4'] },
+  dropd:    { label: 'Drop D',                       notes: ['D2','A2','D3','G3','B3','E4'] },
+  opend:    { label: 'Open D',                       notes: ['D2','A2','D3','F#3','A3','D4'] },
+  halfdown: { label: 'Half-step Down (D# Standard)', notes: ['D#2','G#2','C#3','F#3','A#3','D#4'] },
+};
+const SEMITONE = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 };
+function noteToMidi(n) {
+  const m = /^([A-G])([#b]?)(\d)$/.exec(n);
+  return 12 * (Number(m[3]) + 1) + SEMITONE[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0);
+}
+
+let STRINGS = [];            // senar pada tuning aktif: { name, midi, freq }
+let refA = 440;
+let currentTuning = 'standard';
+function updateFreqs() { STRINGS.forEach(s => s.freq = refA * Math.pow(2, (s.midi - 69) / 12)); }
+function setReference(a4) { refA = a4; updateFreqs(); }
+function setTuning(key) {
+  currentTuning = key;
+  STRINGS = TUNINGS[key].notes.map(n => ({ name: n, midi: noteToMidi(n) }));
+  updateFreqs();
+}
+setTuning('standard');
+
+const FFT_SIZE = 4096;        // jendela ~85 ms pada 48 kHz, cukup untuk D2 (~14 ms/periode)
+const LOWPASS_HZ = 1000;
+const YIN_THRESHOLD = 0.12;   // makin kecil = makin ketat
+const MIN_RMS = 0.01;         // abaikan sinyal terlalu pelan
+const MIN_F = 60, MAX_F = 400; // rentang pencarian f0 (mencakup D2 sampai E4 di semua tuning)
+const IN_TUNE_CENTS = 5;
+const FAR_CENTS = 25;         // di luar ini dianggap meleset jauh (merah)
+
+// ---------- YIN ----------
+function yin(buf, sampleRate, minF = MIN_F, maxF = MAX_F) {
+  const tauMin = Math.floor(sampleRate / maxF);
+  const tauMax = Math.min(Math.floor(sampleRate / minF), Math.floor(buf.length / 2));
+  const d = new Float32Array(tauMax + 1);
+
+  // Langkah 1: difference function
+  for (let tau = 1; tau <= tauMax; tau++) {
+    let sum = 0;
+    for (let i = 0; i < tauMax; i++) {
+      const diff = buf[i] - buf[i + tau];
+      sum += diff * diff;
+    }
+    d[tau] = sum;
+  }
+
+  // Langkah 2: cumulative mean normalized difference (CMND)
+  const cmnd = new Float32Array(tauMax + 1);
+  cmnd[0] = 1;
+  let running = 0;
+  for (let tau = 1; tau <= tauMax; tau++) {
+    running += d[tau];
+    cmnd[tau] = running === 0 ? 1 : d[tau] * tau / running;
+  }
+
+  // Langkah 3: ambil lembah pertama di bawah threshold
+  let tauEst = -1;
+  for (let tau = tauMin; tau <= tauMax; tau++) {
+    if (cmnd[tau] < YIN_THRESHOLD) {
+      while (tau + 1 <= tauMax && cmnd[tau + 1] < cmnd[tau]) tau++;
+      tauEst = tau;
+      break;
+    }
+  }
+  if (tauEst === -1) return -1;
+
+  // Langkah 4: interpolasi parabola untuk presisi sub-sampel
+  const a = cmnd[tauEst - 1] ?? cmnd[tauEst];
+  const b = cmnd[tauEst];
+  const c = cmnd[tauEst + 1] ?? cmnd[tauEst];
+  const denom = a - 2 * b + c;
+  const shift = denom !== 0 ? (a - c) / (2 * denom) : 0;
+  return sampleRate / (tauEst + shift);
+}
+
+// ---------- Pemetaan senar & cents ----------
+let lockedString = null; // null = mode otomatis
+function closestString(f) {
+  if (lockedString) return lockedString;
+  let best = STRINGS[0], bestDist = Infinity;
+  for (const s of STRINGS) {
+    const dist = Math.abs(1200 * Math.log2(f / s.freq)); // jarak dalam cents (skala log)
+    if (dist < bestDist) { bestDist = dist; best = s; }
+  }
+  return best;
+}
+const centsOff = (f, target) => 1200 * Math.log2(f / target);
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const card = $('card');
+const stringsEl = $('strings');
+
+// Dropdown tuning
+Object.entries(TUNINGS).forEach(([key, t]) => {
+  const opt = document.createElement('option');
+  opt.value = key; opt.textContent = t.label;
+  $('tuning').appendChild(opt);
+});
+
+// Bangun ulang tombol senar sesuai tuning aktif
+function buildStrings() {
+  stringsEl.innerHTML = '';
+  STRINGS.forEach(s => {
+    const el = document.createElement('span');
+    el.textContent = s.name; el.dataset.name = s.name;
+    el.addEventListener('click', () => {
+      lockedString = lockedString === s ? null : s;   // klik lagi = lepas kunci
+      history.length = 0;
+      stringsEl.querySelectorAll('span').forEach(x => {
+        const on = lockedString && x.dataset.name === lockedString.name;
+        x.classList.toggle('locked', !!on);
+        x.classList.toggle('active', !!on);
+      });
+      $('lockBadge').classList.toggle('show', !!lockedString);
+      $('lockName').textContent = lockedString ? lockedString.name : '';
+      $('hint').textContent = lockedString ? `Terkunci: ${s.name}` : 'Mode otomatis';
+      if (!lockedString) render(0);
+    });
+    stringsEl.appendChild(el);
+  });
+}
+
+function applyTuning(key) {
+  if (!TUNINGS[key]) key = 'standard';
+  setTuning(key);
+  lockedString = null;                       // senar lama tidak berlaku di tuning baru
+  history.length = 0;
+  $('tuning').value = key;
+  $('tuningNames').textContent = TUNINGS[key].notes.map(n => n.replace(/\d/, '')).join(' · ');
+  $('lockBadge').classList.remove('show');
+  $('lockName').textContent = '';
+  buildStrings();
+  render(0);
+  try { localStorage.setItem('tunerMode', key); } catch (e) {}
+}
+$('tuning').addEventListener('change', e => applyTuning(e.target.value));
+
+// Tick mark busur: -50 .. +50 cents dipetakan ke -90deg .. +90deg
+(function buildTicks() {
+  const g = $('ticks');
+  const cx = 150, cy = 150;
+  const NS = 'http://www.w3.org/2000/svg';
+  for (let c = -50; c <= 50; c += 5) {
+    const ang = (c / 50) * Math.PI / 2;           // 0 = lurus ke atas
+    const major = c % 25 === 0;
+    const mid = c % 10 === 0;
+    const rOut = 130;
+    const rIn = major ? 114 : (mid ? 119 : 124);
+    const line = document.createElementNS(NS, 'line');
+    line.setAttribute('x1', cx + rIn * Math.sin(ang));
+    line.setAttribute('y1', cy - rIn * Math.cos(ang));
+    line.setAttribute('x2', cx + rOut * Math.sin(ang));
+    line.setAttribute('y2', cy - rOut * Math.cos(ang));
+    line.setAttribute('class', c === 0 ? 'tick center' : ('tick' + (major ? ' major' : '')));
+    g.appendChild(line);
+  }
+})();
+
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+function render(f) {
+  if (f <= 0) {
+    card.dataset.state = 'idle';
+    $('note').textContent = '–';
+    $('cents').textContent = '\u00A0';
+    $('freq').textContent = '0.00 Hz';
+    $('hint').textContent = lockedString
+      ? `Terkunci: ${lockedString.name} — petuk senar itu`
+      : (running ? 'Mendengarkan… petuk satu senar' : 'Petuk satu senar untuk mulai');
+    $('needleGroup').style.transform = 'rotate(0deg)';
+    if (!lockedString) stringsEl.querySelectorAll('span').forEach(el => el.classList.remove('active'));
+    return;
+  }
+  const s = closestString(f);
+  const c = centsOff(f, s.freq);
+  const abs = Math.abs(c);
+
+  const state = abs <= IN_TUNE_CENTS ? 'in' : (c < 0 ? 'flat' : 'sharp');
+  card.dataset.state = state;
+  card.dataset.far = String(abs > FAR_CENTS);
+
+  $('note').textContent = s.name;
+  $('freq').textContent = `${f.toFixed(2)} Hz · target ${s.freq.toFixed(2)} Hz`;
+  $('cents').textContent = `${c > 0 ? '+' : ''}${c.toFixed(1)} cents`;
+  $('hint').textContent =
+    state === 'in'   ? 'Pas / In Tune!' :
+    state === 'flat' ? 'Terlalu Rendah — Tune Up' :
+                       'Terlalu Tinggi — Tune Down';
+
+  // Jarum: -50..+50 cents -> -90..+90 derajat, transition CSS membuat gerakannya halus
+  const clamped = clamp(c, -50, 50);
+  $('needleGroup').style.transform = `rotate(${(clamped / 50) * 90}deg)`;
+
+  stringsEl.querySelectorAll('span').forEach(el =>
+    el.classList.toggle('active', el.dataset.name === s.name));
+}
+
+function setIdleUI(text) {
+  card.dataset.state = 'idle';
+  card.dataset.running = String(running);
+  $('liveText').textContent = running ? 'MEREKAM' : 'SIAP';
+  $('toggleText').textContent = running ? 'Berhenti' : 'Mulai Tuner';
+  $('toggle').classList.toggle('stop', running);
+  if (text !== undefined) $('hint').textContent = text;
+}
+
+// ---------- Audio ----------
+let ctx, stream, analyser, rafId, buf, running = false;
+const history = []; // median filter untuk meredam lonjakan
+
+async function start() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+  } catch (e) {
+    $('msg').textContent = 'Akses mikrofon ditolak/tidak tersedia. Buka lewat localhost atau HTTPS.';
+    return;
+  }
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = ctx.createMediaStreamSource(stream);
+
+  const lowpass = ctx.createBiquadFilter();
+  lowpass.type = 'lowpass';
+  lowpass.frequency.value = LOWPASS_HZ;
+  lowpass.Q.value = 0.707;
+
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = FFT_SIZE;
+  buf = new Float32Array(FFT_SIZE);
+
+  source.connect(lowpass);
+  lowpass.connect(analyser); // tidak disambung ke destination -> tidak ada feedback
+
+  running = true;
+  $('msg').textContent = '';
+  setIdleUI(lockedString ? `Terkunci: ${lockedString.name} — petuk senar itu`
+                         : 'Mendengarkan… petuk satu senar');
+  loop();
+}
+
+function stop() {
+  running = false;
+  cancelAnimationFrame(rafId);
+  stream?.getTracks().forEach(t => t.stop());
+  ctx?.close();
+  history.length = 0;
+  setIdleUI('Petuk satu senar untuk mulai');
+  render(0);
+}
+
+function loop() {
+  if (!running) return;
+  analyser.getFloatTimeDomainData(buf);
+
+  let rms = 0;
+  for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
+  rms = Math.sqrt(rms / buf.length);
+
+  if (rms >= MIN_RMS) {
+    // Saat senar dikunci, cari f0 hanya di sekitar target (~ -6..+5 semitone):
+    // ini mencegah salah deteksi oktaf/harmonik.
+    const f = lockedString
+      ? yin(buf, ctx.sampleRate, lockedString.freq * 0.7, lockedString.freq * 1.35)
+      : yin(buf, ctx.sampleRate);
+    if (f > 0) {
+      history.push(f);
+      if (history.length > 5) history.shift();
+      const sorted = [...history].sort((a, b) => a - b);
+      render(sorted[Math.floor(sorted.length / 2)]);
+    }
+  } else {
+    if (history.length) { history.length = 0; render(0); }
+  }
+  rafId = requestAnimationFrame(loop);
+}
+
+function applyReference(v) {
+  v = parseFloat(v);
+  if (!(v >= 400 && v <= 480)) return;     // abaikan input tidak valid
+  setReference(v);
+  history.length = 0;
+  try { localStorage.setItem('tunerRefA', v); } catch (e) {}
+}
+$('ref').addEventListener('input', e => applyReference(e.target.value));
+$('resetRef').addEventListener('click', () => { $('ref').value = 440; applyReference(440); });
+
+// ---------- Metronom ----------
+// AudioContext terpisah dari tuner, jadi Berhenti di tuner tidak mematikan metronom.
+// 6/8: BPM = jumlah ketukan per menit, 6 ketukan per bar (tiap 1/8).
+// shortcut: pemicu bunyi memakai setInterval 25 ms + jadwal audio-clock, cukup untuk latihan; ganti ke AudioWorklet bila perlu presisi lebih.
+const SIGS = { '4/4': 4, '3/4': 3, '2/4': 2, '6/8': 6 };
+let mCtx, mTimer, mBeat = 0, mNext = 0;
+const bpmEl = $('bpm'), bpmNum = $('bpmNum'), sigEl = $('sig');
+Object.keys(SIGS).forEach(k => sigEl.add(new Option(k, k)));
+
+function buildLeds() {
+  $('leds').innerHTML = '';
+  for (let i = 0; i < SIGS[sigEl.value]; i++) {
+    const d = document.createElement('span');
+    d.className = 'led' + (i === 0 ? ' first' : '');
+    $('leds').appendChild(d);
+  }
+}
+function setBpm(v) {
+  v = clamp(Math.round(parseFloat(v)) || 100, 40, 240);
+  bpmEl.value = bpmNum.value = v;
+}
+function click(time, accent) {
+  const o = mCtx.createOscillator(), g = mCtx.createGain();
+  o.frequency.value = accent ? 1000 : 800;
+  g.gain.setValueAtTime(0.0001, time);
+  g.gain.exponentialRampToValueAtTime(0.6, time + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+  o.connect(g).connect(mCtx.destination);
+  o.start(time); o.stop(time + 0.06);
+}
+function flash(beat, time) {
+  setTimeout(() => {
+    const led = $('leds').children[beat];
+    if (!led) return;
+    led.classList.add('on');
+    setTimeout(() => led.classList.remove('on'), 90);
+  }, Math.max(0, (time - mCtx.currentTime) * 1000));
+}
+function schedule() {
+  while (mNext < mCtx.currentTime + 0.12) {
+    click(mNext, mBeat === 0);
+    flash(mBeat, mNext);
+    mNext += 60 / bpmEl.value;
+    mBeat = (mBeat + 1) % SIGS[sigEl.value];
+  }
+}
+function metroStart() {
+  mCtx = new (window.AudioContext || window.webkitAudioContext)();
+  mCtx.resume();
+  mBeat = 0; mNext = mCtx.currentTime + 0.06;
+  schedule();
+  mTimer = setInterval(schedule, 25);
+  $('mToggle').textContent = 'Stop';
+  $('mToggle').classList.add('stop');
+}
+function metroStop() {
+  clearInterval(mTimer); mTimer = null;
+  mCtx?.close();
+  $('mToggle').textContent = 'Start';
+  $('mToggle').classList.remove('stop');
+}
+bpmEl.addEventListener('input', e => setBpm(e.target.value));
+bpmNum.addEventListener('change', e => setBpm(e.target.value));
+sigEl.addEventListener('change', () => { mBeat = 0; buildLeds(); });
+$('mToggle').addEventListener('click', () => mTimer ? metroStop() : metroStart());
+buildLeds();
+
+// ---------- Inisialisasi ----------
+let savedMode = 'standard';
+try {
+  const savedRef = localStorage.getItem('tunerRefA');
+  if (savedRef) { $('ref').value = savedRef; applyReference(savedRef); }
+  savedMode = localStorage.getItem('tunerMode') || 'standard';
+} catch (e) {}
+applyTuning(savedMode);
+setIdleUI();
+</script>
+</body>
+</html>
